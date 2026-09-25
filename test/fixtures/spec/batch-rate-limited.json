@@ -1,0 +1,16 @@
+{
+  "name": "batch: rate limited",
+  "source": "spec §4.1",
+  "response": {
+    "status": 429,
+    "headers": { "Retry-After": "10" },
+    "body": {
+      "error": {
+        "code": "rate_limited",
+        "message": "Event rate over 5,000/s for this project. Retry after 10 seconds.",
+        "docs_url": "https://app.clickclacks.io/docs/api#rate-limits",
+        "request_id": "8c1f…"
+      }
+    }
+  }
+}

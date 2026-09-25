@@ -1,0 +1,24 @@
+{
+  "name": "batch: the curl example, accepted",
+  "source": "spec §4.3",
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/batch",
+    "headers": { "Authorization": "Bearer cks_live_3xAmpl3", "Content-Type": "application/json" },
+    "body": {
+      "items": [
+        {
+          "event": "Invoice paid",
+          "distinct_id": "user_8412",
+          "insert_id": "inv_2291",
+          "properties": { "amount_cents": 4900 }
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 202,
+    "headers": { "Content-Type": "application/json" },
+    "body": { "accepted": 1, "dropped": [], "errors": [], "request_id": "8c1f2d…-FRA" }
+  }
+}

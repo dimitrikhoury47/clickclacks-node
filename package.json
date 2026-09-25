@@ -1,0 +1,73 @@
+{
+  "name": "@clickclacks/node",
+  "version": "1.0.0",
+  "description": "Server-side SDK for ClickClacks product analytics. Batches, gzips and retries events safely on Node 18+ and Cloudflare Workers.",
+  "license": "MIT",
+  "author": "ClickClacks",
+  "homepage": "https://app.clickclacks.io/docs/api",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clickclacks/clickclacks-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/clickclacks/clickclacks-node/issues"
+  },
+  "keywords": [
+    "clickclacks",
+    "analytics",
+    "product-analytics",
+    "events",
+    "server",
+    "cloudflare-workers"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:workerd": "npm run build && node test/workerd/smoke.mjs",
+    "fixtures:sync": "node scripts/sync-fixtures.mjs",
+    "prepack": "npm run build",
+    "test:package": "node scripts/check-package.mjs"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
+    "@types/node": "^18.19.130",
+    "esbuild": "^0.28.2",
+    "miniflare": "^5.20260923.0-alpha",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.7"
+  }
+}

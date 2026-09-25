@@ -1,0 +1,29 @@
+{
+  "name": "batch?validate=true: dry run with an item error",
+  "source": "spec §4.1",
+  "request": { "method": "POST", "path": "/api/v1/batch", "query": { "validate": "true" } },
+  "response": {
+    "status": 200,
+    "body": {
+      "valid": false,
+      "items": [
+        {
+          "index": 0,
+          "event_name": "Subscription started",
+          "person_id": "per_u_Qm9…",
+          "event_id": "evt_sub_started_7f3a91",
+          "ts": "2026-09-25T14:03:11.402Z",
+          "session_id": "ses_server",
+          "properties": {
+            "plan": "pro",
+            "$distinct_id": "user_8412",
+            "$source_id": "src_…",
+            "$browser": "Chrome",
+            "$country": "DE"
+          }
+        }
+      ],
+      "errors": [{ "index": 1, "code": "reserved_property", "field": "properties.$foo", "message": "…" }]
+    }
+  }
+}

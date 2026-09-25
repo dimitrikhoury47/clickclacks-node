@@ -1,0 +1,21 @@
+{
+  "name": "batch: partial success with dropped and per-item errors",
+  "source": "spec §3.6",
+  "response": {
+    "status": 202,
+    "headers": { "Content-Type": "application/json" },
+    "body": {
+      "accepted": 498,
+      "dropped": [{ "index": 12, "reason": "bot_filtered" }],
+      "errors": [
+        {
+          "index": 3,
+          "code": "timestamp_too_old",
+          "field": "timestamp",
+          "message": "Timestamps older than 7 days must use /api/v1/import."
+        }
+      ],
+      "request_id": "8c1f…-IAD"
+    }
+  }
+}

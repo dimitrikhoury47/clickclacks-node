@@ -1,0 +1,43 @@
+{
+  "name": "batch: identify then track, accepted",
+  "source": "spec §4.1",
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/batch",
+    "headers": {
+      "Authorization": "Bearer cks_live_3xAmpl3",
+      "Content-Type": "application/json",
+      "User-Agent": "clickclacks-node/1.0.0"
+    },
+    "body": {
+      "items": [
+        {
+          "type": "identify",
+          "distinct_id": "user_8412",
+          "anonymous_id": "per_k3J9sQ1xR2",
+          "properties": { "plan": "pro", "company": "Birds Heard" }
+        },
+        {
+          "event": "Subscription started",
+          "distinct_id": "user_8412",
+          "timestamp": "2026-09-25T14:03:11.402Z",
+          "insert_id": "sub_started_7f3a91",
+          "properties": {
+            "plan": "pro",
+            "interval": "month",
+            "$revenue": 49,
+            "$currency": "USD",
+            "$groups": { "company": "cmp_311" },
+            "$user_agent": "Mozilla/5.0 …",
+            "$country": "DE"
+          }
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 202,
+    "headers": { "Content-Type": "application/json", "RateLimit-Policy": "1000;w=1, 5000;w=10" },
+    "body": { "accepted": 2, "dropped": [], "errors": [], "request_id": "8c1f2d…-FRA" }
+  }
+}
