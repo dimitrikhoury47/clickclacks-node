@@ -15,9 +15,9 @@ npm install @clickclacks/node
 
 ## Quick start
 
-Create a server key in ClickClacks under **Settings › API keys › Server keys** (it starts
-with `cks_live_` and is shown once). Keep it in an environment variable and never ship it
-to a browser; the API refuses browser requests.
+Create a server key in ClickClacks on your server source’s page (**Sources** › your server
+source), under **Secret keys**. It starts with `cks_live_` and is shown once. Keep it
+in an environment variable and never ship it to a browser; the API refuses browser requests.
 
 ```ts
 import { ClickClacks } from '@clickclacks/node'
