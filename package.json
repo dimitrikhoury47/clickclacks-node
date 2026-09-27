@@ -1,10 +1,10 @@
 {
   "name": "@clickclacks/node",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Server-side SDK for ClickClacks product analytics. Batches, gzips and retries events safely on Node 18+ and Cloudflare Workers.",
   "license": "MIT",
   "author": "ClickClacks",
-  "homepage": "https://app.clickclacks.io/docs/api",
+  "homepage": "https://clickclacks.io/docs/api",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dimitrikhoury47/clickclacks-node.git"

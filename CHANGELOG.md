@@ -3,7 +3,11 @@
 This project follows [Semantic Versioning](https://semver.org/). Within the v1 API, the
 server only makes additive changes, and so does this SDK within a major version.
 
-## 1.0.0 — unreleased
+## 1.0.1 — 2026-09-27
+
+- Documentation links point at https://clickclacks.io/docs/api.
+
+## 1.0.0 — 2026-09-26
 
 First release, for `POST /api/v1/batch`.
 

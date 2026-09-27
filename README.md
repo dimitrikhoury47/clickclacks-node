@@ -274,7 +274,7 @@ func send(body []byte) error {
 ```
 
 The full reference, including every error code, is at
-[app.clickclacks.io/docs/api](https://app.clickclacks.io/docs/api).
+[clickclacks.io/docs/api](https://clickclacks.io/docs/api).
 
 ## Development
 
