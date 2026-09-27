@@ -1,6 +1,6 @@
 {
   "name": "@clickclacks/node",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Server-side SDK for ClickClacks product analytics. Batches, gzips and retries events safely on Node 18+ and Cloudflare Workers.",
   "license": "MIT",
   "author": "ClickClacks",

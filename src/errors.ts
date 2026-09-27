@@ -4,7 +4,7 @@ import type { ItemError } from './types.js'
  * Codes the client reports through `onError`.
  *
  * - `queue_full`: a new item was dropped because `maxQueueSize` was reached. `dropped` is the running count.
- * - `invalid_call`: a `track`/`identify` call was malformed and nothing was queued.
+ * - `invalid_call`: a `track`/`identify`/`group` call was malformed and nothing was queued.
  * - `item_too_large`: one item serialised to more than the 1 MiB request cap.
  * - `client_closed`: a call arrived after `shutdown()`.
  * - `item_errors`: the API refused some items; see `itemErrors`. Never retried.
@@ -59,7 +59,10 @@ export class ClickClacksError extends Error {
   }
 }
 
-/** Thrown by reserved methods (`group`) until the API supports them. */
+/**
+ * Thrown by reserved methods until the API supports them. No method throws it in 1.1.0
+ * (`group()` is supported now); it stays exported for `alias`, which is coming.
+ */
 export class NotYetSupportedError extends Error {
   readonly method: string
 

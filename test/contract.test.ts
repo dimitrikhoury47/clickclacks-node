@@ -11,13 +11,15 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ClickClacks, IdentifyParams, TrackParams } from '../src/index.js'
+import type { ClickClacks, GroupParams, IdentifyParams, TrackParams } from '../src/index.js'
 import { VERSION } from '../src/index.js'
 import { makeClient, mockApi } from './helpers.js'
 
 interface WireItem {
   type?: string
   event?: string
+  group_type?: string
+  group_id?: string
   distinct_id?: string
   anonymous_id?: string
   session_id?: string
@@ -62,6 +64,14 @@ const catalogues = fixtures.filter((f): f is Fixture & CatalogueFixture => 'erro
 
 /** Turns a wire item back into the SDK call that should produce it. */
 function replay(client: ClickClacks, item: WireItem): void {
+  if (item.type === 'group') {
+    const params: GroupParams = { groupType: item.group_type as string, groupId: item.group_id as string }
+    if (item.timestamp !== undefined) params.timestamp = item.timestamp
+    if (item.insert_id !== undefined) params.insertId = item.insert_id
+    if (item.properties !== undefined) params.properties = item.properties
+    client.group(params)
+    return
+  }
   if (item.type === 'identify') {
     const params: IdentifyParams = { distinctId: item.distinct_id as string }
     if (item.anonymous_id !== undefined) params.anonymousId = item.anonymous_id

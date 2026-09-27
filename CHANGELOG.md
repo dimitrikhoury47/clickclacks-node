@@ -3,6 +3,22 @@
 This project follows [Semantic Versioning](https://semver.org/). Within the v1 API, the
 server only makes additive changes, and so does this SDK within a major version.
 
+## 1.1.0 — unreleased
+
+Groups: companies, workspaces and teams.
+
+- `group({ groupType, groupId, properties? })` now queues a `group` item instead of
+  throwing. It records the group's traits (the newest call replaces the whole set). It
+  also takes `timestamp` and `insertId`, and `groupId` may be a number (sent as a
+  string). Bad input goes to `onError` as `invalid_call`, like `track` and `identify`.
+- `track()` takes a typed `groups` option (`{ company: 'cmp_311' }`, at most 5 entries),
+  written into `properties.$groups`. `$groups` in `properties` still works; the option
+  wins when both are sent.
+- New `onWarning` option (default `console.warn`) receives the API's additive
+  `warnings[]`, such as `group_trait_dropped`, with each item's `insert_id`. New
+  `ItemWarning` type.
+- `NotYetSupportedError` stays exported for `alias`; no method throws it now.
+
 ## 1.0.1 — 2026-09-27
 
 - Documentation links point at https://clickclacks.io/docs/api.

@@ -83,9 +83,10 @@ No `nodejs_compat` flag is needed. Bun and Deno work too, but aren't promised.
 | `maxRetries` | `6` | Retries after the first attempt. |
 | `requestTimeout` | `10000` | Milliseconds before a request is abandoned and retried. |
 | `onError` | `console.warn` | Receives a `ClickClacksError` (see below). |
+| `onWarning` | `console.warn` | Receives the API's `warnings` for accepted items, such as a dropped group trait (see below). |
 | `fetch` | global `fetch` | Replace it for proxies or tests. |
 
-### `track({ event, distinctId?, anonymousId?, sessionId?, timestamp?, insertId?, properties? })`
+### `track({ event, distinctId?, anonymousId?, sessionId?, timestamp?, insertId?, properties?, groups? })`
 
 Queues an event. One of `distinctId` (your user ID) or `anonymousId` (a `per_…` browser
 key) is required. `timestamp` is a `Date`, an ISO 8601 string or epoch milliseconds, and
@@ -94,6 +95,19 @@ defaults to the moment you call `track`. `insertId` is generated when omitted.
 Event names starting with `$` are reserved. In `properties` you may send `$ip`,
 `$user_agent`, `$country`, `$current_url`, `$groups`, `$revenue` and `$currency`; other
 `$` keys are refused by the API.
+
+`groups` says which groups the event counts for, as `{ groupType: groupId }`, at most 5
+entries. The SDK writes it into `properties.$groups`. Sending `$groups` in `properties`
+still works; when both are sent, `groups` replaces it.
+
+```ts
+clickclacks.track({
+  event: 'Seats changed',
+  distinctId: 'user_8412',
+  properties: { seats: 41 },
+  groups: { company: 'cmp_311' },
+})
+```
 
 ### `identify({ distinctId, anonymousId?, timestamp?, insertId?, properties? })`
 
@@ -114,10 +128,28 @@ It never rejects; problems go to `onError`.
 Flushes, stops the timer and refuses new calls. After `timeout` ms it stops retrying and
 reports what's left as `shutdown_timeout`. Safe to call twice.
 
-### `group(...)`: reserved
+### `group({ groupType, groupId, properties?, timestamp?, insertId? })`
 
-Coming with Groups. It throws `NotYetSupportedError` today. Until then, send group
-membership on events: `properties: { $groups: { company: 'cmp_311' } }`.
+Records traits for a group, such as a company, workspace or team. It sends one `group`
+item, which the API stores as a free `$group_identify` event; it has no person.
+
+```ts
+clickclacks.group({ groupType: 'company', groupId: 'cmp_311', properties: { plan: 'pro', seats: 41 } })
+```
+
+- `groupType` is 1–64 characters of `[a-z0-9_]`, for example `company`. A Project has at
+  most 5 group types.
+- `groupId` is your ID for the group, 1–255 characters, trimmed, with no control
+  characters. A number is sent as a string. Use an opaque ID (`cmp_311`), not a domain
+  name or an email address.
+- The newest `group` call replaces the group's whole trait set, so send every trait you
+  want shown each time. Traits that look personal (an email address, a phone number, or
+  keys such as `email`, `phone`, `ip`, `address`, `password`) are dropped by the API
+  unless the Source allows them; each drop comes back as a `group_trait_dropped` warning.
+- `group` records the profile only. An event counts for a group when it carries the
+  group: pass `groups` to `track` (or `$groups` in its properties).
+
+Like `track`, it never throws for bad input: problems go to `onError` as `invalid_call`.
 
 ### Errors
 
@@ -130,11 +162,19 @@ membership on events: `properties: { $groups: { company: 'cmp_311' } }`.
 | `request_failed` | Every retry failed; `count` items were lost. |
 | `queue_full` | `maxQueueSize` was reached and a new item was dropped. `dropped` is the running count. |
 | `shutdown_timeout` | `shutdown()` hit its deadline; `count` items weren't delivered. |
-| `invalid_call` | A `track`/`identify` call was malformed; nothing was queued. |
+| `invalid_call` | A `track`/`identify`/`group` call was malformed; nothing was queued. |
 | `item_too_large` | One item serialised to more than 1 MiB. |
 | `client_closed` | A call arrived after `shutdown()`. |
 
 The key never appears in an error or a log line.
+
+`onWarning` receives the API's `warnings` for items it accepted with a change, as a list
+of `{ index, code, field, message, insertId, event }`, for example
+`{ code: 'group_trait_dropped', field: 'properties.email', event: '$group_identify' }`.
+Warnings are not errors, and nothing is retried.
+
+`NotYetSupportedError` is still exported, for methods the API doesn't support yet
+(`alias`). No method throws it in 1.1.0.
 
 ## How delivery works
 

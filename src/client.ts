@@ -1,10 +1,11 @@
-import { ClickClacksError, NotYetSupportedError } from './errors.js'
+import { ClickClacksError } from './errors.js'
 import type {
   ClickClacksOptions,
   FetchLike,
   GroupParams,
   IdentifyParams,
   ItemError,
+  ItemWarning,
   Properties,
   ResponseLike,
   ShutdownOptions,
@@ -31,6 +32,12 @@ export const MAX_BATCH_ITEMS = 500
 export const MAX_BODY_BYTES = 1_000_000
 const ENVELOPE_BYTES = utf8Length('{"items":[]}')
 const MAX_ITEM_BYTES = MAX_BODY_BYTES - ENVELOPE_BYTES
+/** The API's cap on group types per event (`$groups` entries). */
+const MAX_GROUPS_PER_EVENT = 5
+const GROUP_TYPE_PATTERN = /^[a-z0-9_]{1,64}$/
+const MAX_GROUP_ID_LENGTH = 255
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point.
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/
 
 const DEFAULTS = {
   host: DEFAULT_HOST,
@@ -51,8 +58,10 @@ interface QueuedItem {
 }
 
 interface WireItem {
-  type: 'track' | 'identify'
+  type: 'track' | 'identify' | 'group'
   event?: string
+  group_type?: string
+  group_id?: string
   distinct_id?: string
   anonymous_id?: string
   session_id?: string
@@ -70,6 +79,7 @@ interface ApiItemError {
 
 interface ApiBody {
   errors?: ApiItemError[]
+  warnings?: ApiItemError[]
   error?: { code?: unknown; message?: unknown; request_id?: unknown }
   request_id?: unknown
 }
@@ -107,6 +117,38 @@ function wireProperties(value: unknown): Properties | undefined {
   return value as Properties
 }
 
+function groupType(value: unknown, where: string): string {
+  if (typeof value !== 'string' || !GROUP_TYPE_PATTERN.test(value)) {
+    throw new TypeError(`${where} must be 1–64 characters of [a-z0-9_]`)
+  }
+  return value
+}
+
+function groupId(value: unknown, where: string): string {
+  let id: string
+  if (typeof value === 'number' && Number.isFinite(value)) id = String(value)
+  else if (typeof value === 'string') id = value.trim()
+  else throw new TypeError(`${where} must be a string`)
+  if (id === '' || id.length > MAX_GROUP_ID_LENGTH) throw new TypeError(`${where} must be 1–255 characters`)
+  if (CONTROL_CHARACTERS.test(id)) throw new TypeError(`${where} must not contain control characters`)
+  return id
+}
+
+/** Validates the `groups` option of `track` into the `$groups` wire shape. */
+function wireGroups(value: unknown): Record<string, string> | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'object' || Array.isArray(value)) throw new TypeError('groups must be a plain object')
+  const entries = Object.entries(value)
+  if (entries.length > MAX_GROUPS_PER_EVENT) {
+    throw new TypeError(`groups takes at most ${MAX_GROUPS_PER_EVENT} group types`)
+  }
+  const groups: Record<string, string> = {}
+  for (const [type, id] of entries) {
+    groups[groupType(type, `groups key \`${type}\``)] = groupId(id, `groups.${type}`)
+  }
+  return groups
+}
+
 function parseJson(text: string): ApiBody | undefined {
   try {
     const parsed: unknown = JSON.parse(text)
@@ -125,7 +167,7 @@ function positiveInt(name: string, value: number | undefined, fallback: number, 
 }
 
 /**
- * The ClickClacks server-side client. Queue events with `track` and `identify`; they are
+ * The ClickClacks server-side client. Queue events with `track`, `identify` and `group`; they are
  * batched, gzipped and retried safely. Call `shutdown()` before the process exits, or
  * `flushWith(ctx)` at the end of each request on Workers.
  */
@@ -141,6 +183,7 @@ export class ClickClacks {
   readonly #url: string
   readonly #fetch: FetchLike
   readonly #onError: (error: ClickClacksError) => void
+  readonly #onWarning: (warnings: ItemWarning[]) => void
   readonly #closing = new AbortController()
 
   #queue: QueuedItem[] = []
@@ -185,6 +228,12 @@ export class ClickClacks {
     }
     this.#fetch = options.fetch ?? ((url, init) => (globalThis.fetch as unknown as FetchLike)(url, init))
     this.#onError = options.onError ?? ((error) => console.warn(`[clickclacks] ${error.code}: ${error.message}`))
+    this.#onWarning =
+      options.onWarning ??
+      ((warnings) => {
+        const codes = [...new Set(warnings.map((w) => w.code))].join(', ')
+        console.warn(`[clickclacks] warnings: the API accepted ${warnings.length} items with changes (${codes})`)
+      })
   }
 
   /** Items queued or in flight. */
@@ -212,6 +261,9 @@ export class ClickClacks {
         insert_id: optionalId(params.insertId) || generateInsertId(),
         properties: wireProperties(params.properties),
       }
+      const groups = wireGroups(params.groups)
+      // The option wins over `properties.$groups`. The caller's object is never mutated.
+      if (groups) item.properties = { ...item.properties, $groups: groups }
     } catch (error) {
       this.#invalid(error)
       return
@@ -241,14 +293,27 @@ export class ClickClacks {
   }
 
   /**
-   * Reserved for Groups. Always throws `NotYetSupportedError` until the API accepts group
-   * items. Until then, send group membership on events as `properties.$groups`.
+   * Queues a group call: records traits for a group, such as a company. The newest call
+   * replaces the group's whole trait set. Events count for a group through `$groups`
+   * (the `groups` option of `track`). Never throws for bad input: problems go to `onError`.
    */
-  group(_params: GroupParams): never {
-    throw new NotYetSupportedError(
-      'group',
-      'ClickClacks: group() is coming with Groups. For now, send `$groups` in track() properties',
-    )
+  group(params: GroupParams): void {
+    let item: WireItem
+    try {
+      if (!params || typeof params !== 'object') throw new TypeError('group needs a `groupType` and a `groupId`')
+      item = {
+        type: 'group',
+        group_type: groupType(params.groupType, 'group `groupType`'),
+        group_id: groupId(params.groupId, 'group `groupId`'),
+        timestamp: wireTimestamp(params.timestamp),
+        insert_id: optionalId(params.insertId) || generateInsertId(),
+        properties: wireProperties(params.properties),
+      }
+    } catch (error) {
+      this.#invalid(error)
+      return
+    }
+    this.#enqueue(item, '$group_identify')
   }
 
   /**
@@ -460,6 +525,7 @@ export class ClickClacks {
       const parsed = parseJson(text)
       if (status >= 200 && status < 300) {
         this.#reportItemErrors(batch, parsed, status)
+        this.#reportWarnings(batch, parsed)
         return 'done'
       }
       if (status === 413 && batch.length > 1) {
@@ -516,18 +582,7 @@ export class ClickClacks {
     const nested = (body?.error as { errors?: unknown } | undefined)?.errors
     const errors: ApiItemError[] = Array.isArray(body?.errors) ? body.errors : Array.isArray(nested) ? nested : []
     if (errors.length === 0) return false
-    const itemErrors: ItemError[] = errors.map((raw) => {
-      const index = typeof raw.index === 'number' ? raw.index : -1
-      const item = batch[index]
-      return {
-        index,
-        code: typeof raw.code === 'string' ? raw.code : 'unknown',
-        field: typeof raw.field === 'string' ? raw.field : undefined,
-        message: typeof raw.message === 'string' ? raw.message : undefined,
-        insertId: item?.insertId,
-        event: item?.event,
-      }
-    })
+    const itemErrors: ItemError[] = errors.map((raw) => toItemIssue(batch, raw))
     const codes = [...new Set(itemErrors.map((e) => e.code))].join(', ')
     this.#report(
       new ClickClacksError('item_errors', `The API refused ${itemErrors.length} of ${batch.length} items (${codes})`, {
@@ -539,6 +594,33 @@ export class ClickClacks {
       }),
     )
     return true
+  }
+
+  /** Passes the API's per-item `warnings` (items accepted with a change) to `onWarning`. */
+  #reportWarnings(batch: QueuedItem[], body: ApiBody | undefined): void {
+    const raw = Array.isArray(body?.warnings) ? body.warnings : []
+    const warnings: ItemWarning[] = raw
+      .filter((w): w is ApiItemError => !!w && typeof w === 'object')
+      .map((w) => toItemIssue(batch, w))
+    if (warnings.length === 0) return
+    try {
+      this.#onWarning(warnings)
+    } catch {
+      // An onWarning handler must never break delivery.
+    }
+  }
+}
+
+function toItemIssue(batch: QueuedItem[], raw: ApiItemError): ItemError {
+  const index = typeof raw.index === 'number' ? raw.index : -1
+  const item = batch[index]
+  return {
+    index,
+    code: typeof raw.code === 'string' ? raw.code : 'unknown',
+    field: typeof raw.field === 'string' ? raw.field : undefined,
+    message: typeof raw.message === 'string' ? raw.message : undefined,
+    insertId: item?.insertId,
+    event: item?.event,
   }
 }
 

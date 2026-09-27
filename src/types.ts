@@ -18,6 +18,12 @@ export interface TrackParams {
   /** 1–80 characters of `[A-Za-z0-9_-]`. Generated when omitted, so retries are always safe. */
   insertId?: string
   properties?: Properties
+  /**
+   * The groups this event belongs to, as `{ groupType: groupId }`, for example
+   * `{ company: 'cmp_311' }`. At most 5 entries. Written to `properties.$groups`; when both
+   * are sent, this option replaces `properties.$groups`.
+   */
+  groups?: Record<string, string>
 }
 
 export interface IdentifyParams {
@@ -32,12 +38,18 @@ export interface IdentifyParams {
   properties?: Properties
 }
 
-/** Reserved: published now, coming with Groups. `group()` throws `NotYetSupportedError`. */
+/** A group profile: its type, its ID and its traits. */
 export interface GroupParams {
   /** 1–64 characters of `[a-z0-9_]`, for example `company`. */
   groupType: string
-  groupId: string
+  /** Your ID for the group, 1–255 characters. Numbers are sent as strings. Prefer an opaque ID. */
+  groupId: string | number
+  /** Traits, such as `plan`. The newest call replaces the whole set, so send every trait each time. */
   properties?: Properties
+  /** Defaults to the moment `group` is called. */
+  timestamp?: Timestamp
+  /** 1–80 characters of `[A-Za-z0-9_-]`. Generated when omitted, so retries are always safe. */
+  insertId?: string
 }
 
 /** The subset of a `fetch` Response the client reads. */
@@ -79,6 +91,11 @@ export interface ClickClacksOptions {
   requestTimeout?: number
   /** Called for dropped items, per-item errors and final failures. Default: `console.warn`. */
   onError?: (error: import('./errors.js').ClickClacksError) => void
+  /**
+   * Called when the API accepted items but reported `warnings` about them, for example a
+   * group trait it dropped (`group_trait_dropped`). Default: `console.warn`.
+   */
+  onWarning?: (warnings: ItemWarning[]) => void
   /** Replaces the global `fetch`, for proxies and tests. */
   fetch?: FetchLike
 }
@@ -97,6 +114,21 @@ export interface ItemError {
   message?: string
   /** The item's `insert_id`, to match the error to your own records. */
   insertId?: string
-  /** The item's event name (`$identify` for identify items). */
+  /** The item's event name (`$identify` for identify items, `$group_identify` for group items). */
+  event?: string
+}
+
+/** A per-item warning from the API: the item was accepted, with a change, such as a dropped trait. */
+export interface ItemWarning {
+  /** The item's index within the request that was sent. */
+  index: number
+  /** For example `group_trait_dropped`. */
+  code: string
+  /** For example `properties.email`. */
+  field?: string
+  message?: string
+  /** The item's `insert_id`. */
+  insertId?: string
+  /** The item's event name. */
   event?: string
 }

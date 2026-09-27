@@ -165,14 +165,197 @@ describe('invalid calls', () => {
 })
 
 describe('group', () => {
-  it('is reserved and throws NotYetSupportedError', () => {
-    const { client } = makeClient({ fetch: mockApi().fetch })
-    expect(() => client.group({ groupType: 'company', groupId: 'cmp_311' })).toThrow(NotYetSupportedError)
-    try {
-      client.group({ groupType: 'company', groupId: 'cmp_311' })
-    } catch (error) {
-      expect((error as NotYetSupportedError).method).toBe('group')
-      expect((error as Error).name).toBe('NotYetSupportedError')
+  it('queues a group item with no person', async () => {
+    const api = mockApi()
+    const { client, errors } = makeClient({ fetch: api.fetch })
+    const when = new Date('2026-09-25T14:03:11.402Z')
+    client.group({
+      groupType: 'company',
+      groupId: 'acme',
+      properties: { plan: 'pro', seats: 41 },
+      timestamp: when,
+      insertId: 'grp_acme_1',
+    })
+    client.group({ groupType: 'workspace', groupId: 311 })
+    client.group({ groupType: 'team', groupId: '  cmp_311  ' })
+    expect(client.pending).toBe(3)
+    await client.flush()
+    expect(errors).toEqual([])
+    const items = api.requests[0]?.json.items ?? []
+    expect(items[0]).toEqual({
+      type: 'group',
+      group_type: 'company',
+      group_id: 'acme',
+      timestamp: '2026-09-25T14:03:11.402Z',
+      insert_id: 'grp_acme_1',
+      properties: { plan: 'pro', seats: 41 },
+    })
+    expect(items[1]).toMatchObject({ type: 'group', group_type: 'workspace', group_id: '311' })
+    expect(items[1]?.insert_id).toMatch(/^[0-9a-f]{32}$/)
+    expect(items[1]).not.toHaveProperty('properties')
+    expect(items[2]).toMatchObject({ group_id: 'cmp_311' })
+    for (const item of items) {
+      expect(item).not.toHaveProperty('distinct_id')
+      expect(item).not.toHaveProperty('anonymous_id')
+      expect(item).not.toHaveProperty('event')
     }
+  })
+
+  it('reports invalid group calls to onError and queues nothing', async () => {
+    const api = mockApi()
+    const { client, errors } = makeClient({ fetch: api.fetch })
+    client.group({ groupType: 'Company', groupId: 'acme' })
+    client.group({ groupType: '', groupId: 'acme' })
+    client.group({ groupType: 'x'.repeat(65), groupId: 'acme' })
+    client.group({ groupType: 'company', groupId: '' })
+    client.group({ groupType: 'company', groupId: '   ' })
+    client.group({ groupType: 'company', groupId: 'a'.repeat(256) })
+    client.group({ groupType: 'company', groupId: 'ac\nme' })
+    client.group({ groupType: 'company', groupId: Number.NaN })
+    client.group({ groupType: 'company', groupId: { id: 1 } as never })
+    client.group({ groupType: 'company', groupId: 'acme', properties: [] as never })
+    client.group(undefined as never)
+    expect(errors.map((e) => e.code)).toEqual(Array(11).fill('invalid_call'))
+    expect(client.pending).toBe(0)
+    await client.flush()
+    expect(api.requests).toHaveLength(0)
+  })
+
+  it('accepts a 255-character group id', () => {
+    const { client, errors } = makeClient({ fetch: mockApi().fetch })
+    client.group({ groupType: 'company', groupId: 'a'.repeat(255) })
+    expect(errors).toEqual([])
+    expect(client.pending).toBe(1)
+  })
+
+  it('no longer throws, and NotYetSupportedError stays exported', () => {
+    const { client } = makeClient({ fetch: mockApi().fetch })
+    expect(() => client.group({ groupType: 'company', groupId: 'cmp_311' })).not.toThrow()
+    const error = new NotYetSupportedError('alias', 'coming')
+    expect(error.name).toBe('NotYetSupportedError')
+    expect(error.method).toBe('alias')
+  })
+
+  it('is refused after shutdown', async () => {
+    const { client, errors } = makeClient({ fetch: mockApi().fetch })
+    await client.shutdown()
+    client.group({ groupType: 'company', groupId: 'acme' })
+    expect(errors.map((e) => e.code)).toEqual(['client_closed'])
+  })
+})
+
+describe('track groups option', () => {
+  it('writes groups into properties.$groups', async () => {
+    const api = mockApi()
+    const { client } = makeClient({ fetch: api.fetch })
+    client.track({
+      event: 'Seats changed',
+      distinctId: 'user_8412',
+      properties: { seats: 41 },
+      groups: { company: 'acme' },
+    })
+    client.track({ event: 'No props', distinctId: 'u', groups: { company: 'acme', team: 'core' } })
+    await client.flush()
+    const items = api.requests[0]?.json.items ?? []
+    expect(items[0]?.properties).toEqual({ seats: 41, $groups: { company: 'acme' } })
+    expect(items[1]?.properties).toEqual({ $groups: { company: 'acme', team: 'core' } })
+  })
+
+  it('keeps properties.$groups working, and the option wins when both are sent', async () => {
+    const api = mockApi()
+    const { client } = makeClient({ fetch: api.fetch })
+    const properties = { seats: 41, $groups: { company: 'old', team: 'core' } }
+    client.track({ event: 'a', distinctId: 'u', properties: { $groups: { company: 'cmp_311' } } })
+    client.track({ event: 'b', distinctId: 'u', properties, groups: { company: 'new' } })
+    await client.flush()
+    const items = api.requests[0]?.json.items ?? []
+    expect(items[0]?.properties).toEqual({ $groups: { company: 'cmp_311' } })
+    expect(items[1]?.properties).toEqual({ seats: 41, $groups: { company: 'new' } })
+    // The caller's object is not mutated.
+    expect(properties.$groups).toEqual({ company: 'old', team: 'core' })
+  })
+
+  it('converts number ids and trims ids', async () => {
+    const api = mockApi()
+    const { client } = makeClient({ fetch: api.fetch })
+    client.track({ event: 'a', distinctId: 'u', groups: { company: 311 as never, team: ' core ' } })
+    await client.flush()
+    expect(api.requests[0]?.json.items[0]?.properties).toEqual({ $groups: { company: '311', team: 'core' } })
+  })
+
+  it('reports an invalid groups option and queues nothing', () => {
+    const { client, errors } = makeClient({ fetch: mockApi().fetch })
+    client.track({ event: 'a', distinctId: 'u', groups: { Company: 'acme' } })
+    client.track({ event: 'a', distinctId: 'u', groups: { company: '' } })
+    client.track({ event: 'a', distinctId: 'u', groups: { company: 'a\u0000b' } })
+    client.track({ event: 'a', distinctId: 'u', groups: ['acme'] as never })
+    client.track({ event: 'a', distinctId: 'u', groups: { a: '1', b: '2', c: '3', d: '4', e: '5', f: '6' } })
+    expect(errors.map((e) => e.code)).toEqual(Array(5).fill('invalid_call'))
+    expect(client.pending).toBe(0)
+  })
+
+  it('accepts five group types', () => {
+    const { client, errors } = makeClient({ fetch: mockApi().fetch })
+    client.track({ event: 'a', distinctId: 'u', groups: { a: '1', b: '2', c: '3', d: '4', e: '5' } })
+    expect(errors).toEqual([])
+    expect(client.pending).toBe(1)
+  })
+})
+
+describe('warnings', () => {
+  it('passes the API warnings to onWarning with the item they belong to', async () => {
+    const api = mockApi([
+      accepted(2, {
+        warnings: [
+          { index: 1, code: 'group_trait_dropped', field: 'properties.email', message: 'Looks like an email address' },
+        ],
+      }),
+    ])
+    const warnings: unknown[] = []
+    const { client, errors } = makeClient({ fetch: api.fetch, onWarning: (w) => warnings.push(...w) })
+    client.track({ event: 'a', distinctId: 'u' })
+    client.group({ groupType: 'company', groupId: 'acme', insertId: 'grp_1', properties: { email: 'a@b.test' } })
+    await client.flush()
+    expect(errors).toEqual([])
+    expect(warnings).toEqual([
+      {
+        index: 1,
+        code: 'group_trait_dropped',
+        field: 'properties.email',
+        message: 'Looks like an email address',
+        insertId: 'grp_1',
+        event: '$group_identify',
+      },
+    ])
+  })
+
+  it('logs warnings with console.warn by default and ignores an empty list', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const api = mockApi([
+      accepted(1),
+      accepted(1, { warnings: [{ index: 0, code: 'group_trait_dropped', field: 'properties.phone' }] }),
+    ])
+    const client = new ClickClacks({ key: KEY, fetch: api.fetch, flushInterval: 0, onError: () => {} })
+    client.group({ groupType: 'company', groupId: 'acme' })
+    await client.flush()
+    expect(warn).not.toHaveBeenCalled()
+    client.group({ groupType: 'company', groupId: 'acme' })
+    await client.flush()
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0]?.[0])).toContain('group_trait_dropped')
+  })
+
+  it('never lets an onWarning handler break delivery', async () => {
+    const api = mockApi([accepted(1, { warnings: [{ index: 0, code: 'group_trait_dropped' }] })])
+    const { client, errors } = makeClient({
+      fetch: api.fetch,
+      onWarning: () => {
+        throw new Error('boom')
+      },
+    })
+    client.group({ groupType: 'company', groupId: 'acme' })
+    await expect(client.flush()).resolves.toBeUndefined()
+    expect(errors).toEqual([])
+    expect(client.pending).toBe(0)
   })
 })

@@ -49,6 +49,31 @@ describe('batching', () => {
     expect(ids).toEqual(Array.from({ length: 250 }, (_, i) => `u${i}`))
   })
 
+  it('splits group items into batches of flushAt like any other item', async () => {
+    const api = mockApi()
+    const { client } = makeClient({ fetch: api.fetch, flushAt: 100, maxQueueSize: 1000 })
+    for (let i = 0; i < 250; i++) {
+      if (i % 2 === 0) client.group({ groupType: 'company', groupId: `c${i}` })
+      else client.track({ event: 'e', distinctId: `u${i}`, groups: { company: `c${i}` } })
+    }
+    await client.flush()
+    expect(api.requests.map((r) => r.json.items.length)).toEqual([100, 100, 50])
+    const types = api.requests.flatMap((r) => r.json.items.map((i) => i.type))
+    expect(types).toEqual(Array.from({ length: 250 }, (_, i) => (i % 2 === 0 ? 'group' : 'track')))
+  })
+
+  it('keeps group requests under 1 MiB uncompressed', async () => {
+    const api = mockApi()
+    const { client } = makeClient({ fetch: api.fetch, flushAt: 500 })
+    const blob = 'x'.repeat(300_000)
+    for (let i = 0; i < 7; i++) client.group({ groupType: 'company', groupId: `c${i}`, properties: { blob } })
+    await client.flush()
+    expect(api.requests.map((r) => r.json.items.length)).toEqual([3, 3, 1])
+    for (const request of api.requests) {
+      expect(Buffer.byteLength(JSON.stringify(request.json))).toBeLessThanOrEqual(MAX_BODY_BYTES)
+    }
+  })
+
   it('keeps every request body under 1 MiB uncompressed', async () => {
     const api = mockApi()
     const { client } = makeClient({ fetch: api.fetch, flushAt: 500 })

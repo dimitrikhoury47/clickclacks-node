@@ -32,7 +32,8 @@ for (const mod of [esm, cjs]) {
     flushInterval: 0,
     fetch: async () => new Response('{}', { status: 202 }),
   })
-  assert.throws(() => client.group({ groupType: 'company', groupId: 'c' }), mod.NotYetSupportedError)
+  assert.doesNotThrow(() => client.group({ groupType: 'company', groupId: 'c' }))
+  assert.equal(new mod.NotYetSupportedError('alias', 'x').name, 'NotYetSupportedError')
   client.track({ event: 'e', distinctId: 'u' })
   await client.shutdown()
 }

@@ -7,6 +7,7 @@ export type {
   GroupParams,
   IdentifyParams,
   ItemError,
+  ItemWarning,
   Properties,
   RequestInitLike,
   ResponseLike,

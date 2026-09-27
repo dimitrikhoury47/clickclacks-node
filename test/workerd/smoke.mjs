@@ -24,8 +24,9 @@ export default {
     const url = new URL(request.url)
     if (url.pathname === '/errors') return Response.json(errors)
     if (url.pathname === '/group') {
-      try { clickclacks.group({ groupType: 'company', groupId: 'c1' }) }
-      catch (e) { return Response.json({ threw: e instanceof NotYetSupportedError }) }
+      try { clickclacks.group({ groupType: 'company', groupId: 'c1', properties: { plan: 'pro' } }) }
+      catch (e) { return Response.json({ threw: true, notYet: e instanceof NotYetSupportedError }) }
+      clickclacks.flushWith(ctx)
       return Response.json({ threw: false })
     }
     const n = Number(url.searchParams.get('n') ?? '1')
@@ -103,7 +104,17 @@ try {
   assert.equal(captured[2].json.items.length, 21)
 
   const group = await (await mf.dispatchFetch('https://worker.test/group')).json()
-  assert.deepEqual(group, { threw: true })
+  assert.deepEqual(group, { threw: false })
+  await waitFor(() => captured.length >= 4, 'the group batch')
+  assert.deepEqual(
+    captured[3].json.items.map(({ type, group_type, group_id, properties }) => ({
+      type,
+      group_type,
+      group_id,
+      properties,
+    })),
+    [{ type: 'group', group_type: 'company', group_id: 'c1', properties: { plan: 'pro' } }],
+  )
   const errors = await (await mf.dispatchFetch('https://worker.test/errors')).json()
   assert.deepEqual(errors, [])
 
