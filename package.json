@@ -7,10 +7,10 @@
   "homepage": "https://app.clickclacks.io/docs/api",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/clickclacks/clickclacks-node.git"
+    "url": "git+https://github.com/dimitrikhoury47/clickclacks-node.git"
   },
   "bugs": {
-    "url": "https://github.com/clickclacks/clickclacks-node/issues"
+    "url": "https://github.com/dimitrikhoury47/clickclacks-node/issues"
   },
   "keywords": [
     "clickclacks",

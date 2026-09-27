@@ -1,7 +1,8 @@
 name: Release
 
 # Publishes to npm with provenance when a semver tag (v1.2.3) is pushed.
-# Needs the NPM_TOKEN secret (an automation token for the @clickclacks scope).
+# Uses npm trusted publishing (OIDC): no npm token is stored anywhere. The package's
+# npm settings must list this repository and workflow (release.yml) as a trusted publisher.
 
 on:
   push:
@@ -21,6 +22,7 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
           cache: npm
+      - run: npm install -g npm@latest # trusted publishing needs npm 11.5.1+
       - run: npm ci
       - name: Tag matches package.json
         run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
@@ -31,5 +33,3 @@ jobs:
       - run: npm run test:package
       - run: npm run test:workerd
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
